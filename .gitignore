@@ -1,0 +1,10 @@
+.DS_*
+# Visual Studio 2015 cache/options directory
+.vs/
+/*.suo
+/*.user
+/bin
+/obj
+/debug
+bin
+obj
