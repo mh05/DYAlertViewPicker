@@ -29,6 +29,7 @@ namespace DYAlertViewPicker
         private UIView _switchView;
         private UIView _footerView;
         private UITableView _tableView;
+        private System.Timers.Timer _timer;
 
         #endregion
 
@@ -46,27 +47,27 @@ namespace DYAlertViewPicker
         public bool TapBackgroundToDismiss { get; set; } = true;
         public bool TapPickerViewItemToConfirm { get; set; } = true;
         public bool IsUiDeviceOrientation { get; set; }
-
         public string SwitchButtonTitle { get; set; }
         public string HeaderTitle { get; set; }
         public string CancelButtonTitle { get; set; }
         public string ConfirmButtonTitle { get; set; }
-
         public IReadOnlyList<string> ItemList { get; set; }
+
         public NSIndexPath SelectedIndexPath { get; set; }
 
-        #endregion
-
-        #region EventHandlers
-
-        public event EventHandler OnCancel;
-
-        public event EventHandler<string> OnConfirm;
+        public bool SwitchStatus { get; private set; }
 
         public event EventHandler<bool> OnSwitchChanged;
 
         #endregion
 
+        #region 
+
+        public event EventHandler OnCancel;
+
+        public event EventHandler<string> OnConfirm;
+
+        #endregion
 
         #region ctor
 
@@ -75,6 +76,7 @@ namespace DYAlertViewPicker
         public DyAlertPickerView(string headerTitle, string cancelButtonTitle, string confirmButtonTitle,
             string switchButtonTitle)
         {
+
             TapBackgroundToDismiss = true;
             HeaderTitle = headerTitle ?? string.Empty;
             HeaderTitleColor = UIColor.White;
@@ -97,6 +99,7 @@ namespace DYAlertViewPicker
         }
 
         #endregion
+
 
         private async void OrientationChange(NSNotification notification)
         {
@@ -137,8 +140,22 @@ namespace DYAlertViewPicker
         }
 
 
+        public void ShowWithTimeout(int delay, int index = -1)
+        {
+            _timer = new System.Timers.Timer(delay);
+            _timer.Elapsed += (sender, args) =>
+            {
+                InvokeOnMainThread(CancelButtonPress);
+            };
+
+            Show(index);
+            _timer.Start();
+        }
+
+
         public void Show(int index = -1)
         {
+
             SetupSubViews();
 
             var mainWindow = UIApplication.SharedApplication.Delegate.GetWindow();
@@ -167,15 +184,17 @@ namespace DYAlertViewPicker
         }
 
         /// <summary>
-        /// Uses the On
+        /// Send the change of switch back
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="eventArgs"></param>
         private void SwOnValueChanged(object sender, EventArgs eventArgs)
         {
-            var uiSwitch = sender as UISwitch;
-            if(uiSwitch !=null)
-             OnSwitchChanged?.Invoke(sender,uiSwitch.On);
+            var s = sender as UISwitch;
+            if (s == null)
+                return;
+            SwitchStatus = s.On;
+            OnSwitchChanged?.Invoke(this, s.On);
         }
 
         private void Confirm(string value)
@@ -197,7 +216,11 @@ namespace DYAlertViewPicker
 
         private void CancelButtonPress()
         {
-            Dismiss(() => OnCancel?.Invoke(this, EventArgs.Empty));
+            Dismiss(() =>
+            {
+                _timer?.Dispose();
+                OnCancel?.Invoke(this, EventArgs.Empty);
+            });
         }
 
         private async void Dismiss(Action completion)
@@ -206,16 +229,16 @@ namespace DYAlertViewPicker
             IsUiDeviceOrientation = true;
             NSNotificationCenter.DefaultCenter.RemoveObserver(this);
             UIDevice.CurrentDevice.EndGeneratingDeviceOrientationNotifications();
-            var delay = TapPickerViewItemToConfirm ? 0.5d : 0d;
-            await Task.Delay(TimeSpan.FromSeconds(delay));
+            var delayTime = TapPickerViewItemToConfirm ? 0.5d : 0d;
+            await Task.Delay(TimeSpan.FromSeconds(delayTime));
 
             Animate(0.4, 0.0, UIViewAnimationOptions.CurveEaseOut, () =>
-                {
-                    BackgroundColor = UIColor.Black.ColorWithAlpha(DyBackgroundAlpha);
-                    Layer.Opacity = 0.1f;
-                    Layer.Transform = CATransform3D.MakeScale(1f, 1f, 1f);
+            {
+                BackgroundColor = UIColor.Black.ColorWithAlpha(DyBackgroundAlpha);
+                Layer.Opacity = 0.1f;
+                Layer.Transform = CATransform3D.MakeScale(1f, 1f, 1f);
 
-                },
+            },
                 () =>
                 {
                     foreach (var subview in Subviews)
@@ -439,11 +462,11 @@ namespace DYAlertViewPicker
             };
 
             var sw = new UISwitch(CGRect.Empty);
-            sw.Frame = new CGRect(_tableView.Frame.Size.Width - sw.Frame.Size.Width - 2,
-                (bsv.Frame.Size.Width - sw.Frame.Size.Height) / 2, sw.Frame.Size.Width, sw.Frame.Size.Height);
+            sw.Frame = new CGRect(_tableView.Frame.Size.Width - sw.Frame.Size.Width - _tableView.Frame.Y - 2,
+                                  (bsv.Frame.Size.Height - sw.Frame.Size.Height) / 2, sw.Frame.Size.Width, sw.Frame.Size.Height);
             sw.ValueChanged += SwOnValueChanged;
 
-            var lbl = new UILabel(new CGRect(15, 0, bsv.Frame.Size.Width - sw.Frame.Size.Width - 15,
+            var lbl = new UILabel(new CGRect(15, 2, bsv.Frame.Size.Width - sw.Frame.Size.Width,
                 bsv.Frame.Size.Height))
             {
                 Text = SwitchButtonTitle,
